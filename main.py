@@ -45,7 +45,11 @@ if not API_KEY:
 
 # Input / output paths (relative to the script's directory)
 INPUT_FILE = "beszamolo.pdf"
-OUTPUT_FILE = "beszamolo_styled_pptx.pptx"
+
+# Set to "light", "dark", or "none"
+THEME = "light"
+
+OUTPUT_FILE = f"beszamolo_{THEME}_pptx.pptx"
 
 # Gemini model to use
 MODEL_NAME = "gemini-2.5-flash"
@@ -54,8 +58,7 @@ MODEL_NAME = "gemini-2.5-flash"
 # Set to an integer (e.g. 5) to limit the number of generated slides, or None for unlimited.
 MAX_SLIDES = 10
 
-# Set to "light", "dark", or "none"
-THEME = "light"
+
 
 
 # ===========================================================================
