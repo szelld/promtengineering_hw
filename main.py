@@ -19,9 +19,14 @@ from dotenv import load_dotenv
 # ---------------------------------------------------------------------------
 # Third-party imports
 # ---------------------------------------------------------------------------
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from pptx import Presentation
 from pptx.util import Pt
+from pptx.dml.color import RGBColor
+from pptx.enum.shapes import MSO_SHAPE
+from pptx.oxml.xmlchemy import OxmlElement
+from pptx.oxml.ns import qn
 from pypdf import PdfReader
 
 # ---------------------------------------------------------------------------
@@ -39,24 +44,34 @@ if not API_KEY:
     sys.exit(1)
 
 # Input / output paths (relative to the script's directory)
-INPUT_FILE = "beszamolo.pdf"
-OUTPUT_FILE = "beszamolo_pptx.pptx"
+INPUT_FILE = "önlab_doukmentacio111.pdf"
+
+# Set to "light", "dark", or "none"
+THEME = "light"
+
+OUTPUT_FILE = f"önlab_doukmentacio_{THEME}_pptx.pptx"
 
 # Gemini model to use
 MODEL_NAME = "gemini-2.5-flash"
+
+# Configuration Options
+# Set to an integer (e.g. 5) to limit the number of generated slides, or None for unlimited.
+MAX_SLIDES = 10
+
+
 
 
 # ===========================================================================
 # Step 1 — Configure the Gemini API
 # ===========================================================================
 
-def configure_api(api_key: str) -> None:
+def configure_api(api_key: str):
     """
-    Configure the google-generativeai client with the provided API key.
+    Configure the google-genai client with the provided API key.
     """
-
-    genai.configure(api_key=api_key)
+    client = genai.Client(api_key=api_key)
     print("[OK] Gemini API configured successfully.")
+    return client
 
 
 # ===========================================================================
@@ -101,7 +116,7 @@ def read_input_text(filepath: str) -> str:
 # Step 3 — Send the text to Gemini and request structured JSON slides
 # ===========================================================================
 
-def generate_slides(text: str) -> str:
+def generate_slides(text: str, client, max_slides: int | None = None) -> str:
     """
     Send the input text to Gemini with a strict prompt that requests
     a JSON array of slide strings.
@@ -111,6 +126,8 @@ def generate_slides(text: str) -> str:
 
     Args:
         text: The source text to summarize into slides.
+        client: The configured genai client.
+        max_slides: Optional maximum number of slides to generate.
 
     Returns:
         The raw response text (expected to be a JSON array of strings).
@@ -122,6 +139,16 @@ def generate_slides(text: str) -> str:
         "Organize them into presentation slides. "
         "Each slide should have a short title line followed by 2-4 bullet points. "
         "Use the SAME language as the input text. "
+    )
+
+    if max_slides and isinstance(max_slides, int) and max_slides > 0:
+        prompt += (
+            f"CRITICAL INSTRUCTION: You MUST condense the entire text into EXACTLY {max_slides} slides. "
+            "Do not cut off the story or information; ensure the presentation has a beginning, middle, and logical conclusion "
+            f"within this strict {max_slides}-slide limit. "
+        )
+
+    prompt += (
         "Return your answer as a JSON array of strings, where each string is "
         "one slide's complete content (title + bullet points). "
         "Do NOT wrap the JSON in markdown code fences. "
@@ -132,20 +159,18 @@ def generate_slides(text: str) -> str:
     )
 
     # Configure generation to force JSON output
-    generation_config = genai.GenerationConfig(
+    config = types.GenerateContentConfig(
         response_mime_type="application/json",
         temperature=0.3,  # Lower temperature for more deterministic output
     )
 
-    # Create the model instance
-    model = genai.GenerativeModel(MODEL_NAME)
-
     print(f"[...] Sending text to {MODEL_NAME} - this may take a few seconds...")
 
     try:
-        response = model.generate_content(
-            prompt,
-            generation_config=generation_config,
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+            config=config,
         )
     except Exception as e:
         print(f"ERROR: Gemini API call failed: {e}")
@@ -236,33 +261,130 @@ def create_pptx(slides: list[str], output_path: str) -> None:
         blank_slide_layout = prs.slide_layouts[6] 
         slide = prs.slides.add_slide(blank_slide_layout)
         
+        # --- Apply Background ---
+        if THEME == "dark":
+            background = slide.background
+            fill = background.fill
+            fill.solid()
+            fill.fore_color.rgb = RGBColor(18, 18, 25)  # Very dark blue/grey
+        elif THEME == "light" or THEME == "none":
+            background = slide.background
+            fill = background.fill
+            fill.solid()
+            fill.fore_color.rgb = RGBColor(255, 255, 255)  # White
+        
         # Split content into title and body (assuming first line is title)
         lines = slide_content.strip().split("\n")
         title_text = lines[0] if lines else ""
         body_text = "\n".join(lines[1:]) if len(lines) > 1 else ""
 
-        # Add Title Box
+        # --- Add Title Box ---
         title_box = slide.shapes.add_textbox(Pt(30), Pt(30), prs.slide_width - Pt(60), Pt(50))
         tf = title_box.text_frame
         p = tf.paragraphs[0]
         p.text = title_text
+        p.font.name = "Segoe UI"
         p.font.size = Pt(32)
         p.font.bold = True
+        
+        if THEME == "dark":
+            p.font.color.rgb = RGBColor(0, 255, 204)  # Neon Cyan
+        else:
+            p.font.color.rgb = RGBColor(0, 0, 0)  # Black
 
-        # Add Body Box
+        # --- Add Accent Line ---
+        if THEME == "dark":
+            accent_line = slide.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE, 
+                Pt(32), Pt(85), 
+                prs.slide_width - Pt(64), Pt(3)
+            )
+            accent_line.fill.solid()
+            accent_line.fill.fore_color.rgb = RGBColor(138, 43, 226)  # Electric Purple
+            accent_line.line.fill.background()  # Remove border
+        elif THEME == "light":
+            # Gradient blue line at the bottom using a single rectangle and OxmlElement
+            accent_line = slide.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE,
+                0, prs.slide_height - Pt(30), 
+                prs.slide_width, Pt(30)
+            )
+            accent_line.line.fill.background()  # Remove border
+            
+            # Explicitly set noFill so we know exactly where to insert gradFill in the XML sequence
+            accent_line.fill.background()
+            
+            # Manipulate XML to add gradient in the correct sequence (before <a:ln>)
+            spPr = accent_line._element.spPr
+            noFill = spPr.find(qn('a:noFill'))
+                
+            gradFill = OxmlElement('a:gradFill')
+            gsLst = OxmlElement('a:gsLst')
+            
+            # Stop 1: Dark Blue
+            gs1 = OxmlElement('a:gs')
+            gs1.set('pos', '0')
+            srgbClr1 = OxmlElement('a:srgbClr')
+            srgbClr1.set('val', '00008B')
+            gs1.append(srgbClr1)
+            gsLst.append(gs1)
+            
+            # Stop 2: Light Blue
+            gs2 = OxmlElement('a:gs')
+            gs2.set('pos', '100000')
+            srgbClr2 = OxmlElement('a:srgbClr')
+            srgbClr2.set('val', '87CEEB')
+            gs2.append(srgbClr2)
+            gsLst.append(gs2)
+            
+            gradFill.append(gsLst)
+            
+            # Linear gradient properties (0 degrees = left to right)
+            lin = OxmlElement('a:lin')
+            lin.set('ang', '0')
+            lin.set('scaled', '1')
+            gradFill.append(lin)
+            
+            # Insert gradFill right where noFill was, ensuring valid XML sequence
+            if noFill is not None:
+                noFill.addprevious(gradFill)
+                spPr.remove(noFill)
+            else:
+                spPr.insert(1, gradFill)
+
+        # --- Add Body Box ---
         if body_text:
             body_box = slide.shapes.add_textbox(Pt(30), Pt(100), prs.slide_width - Pt(60), prs.slide_height - Pt(130))
             tf_body = body_box.text_frame
             tf_body.word_wrap = True
             
+            # Use the actual list layout capability in pptx by treating paragraphs properly
+            is_first = True
             for line in body_text.split("\n"):
-                p = tf_body.add_paragraph()
-                # Clean up bullet point formatting from markdown
-                if line.strip().startswith("- "):
+                if is_first:
+                    p = tf_body.paragraphs[0]
+                    is_first = False
+                else:
+                    p = tf_body.add_paragraph()
+                
+                # Check for bullet point format
+                if line.strip().startswith("- ") or line.strip().startswith("* "):
                     p.text = line.strip()[2:]
-                    p.level = 0
+                    p.level = 1  # This triggers the bullet point styling in pptx natively
                 else:
                     p.text = line.strip()
+                    p.level = 0
+                
+                # Style body text
+                p.font.name = "Segoe UI"
+                p.font.size = Pt(18)
+                if THEME == "dark":
+                    p.font.color.rgb = RGBColor(230, 230, 240)  # Off-white / light grey
+                else:
+                    p.font.color.rgb = RGBColor(0, 0, 0)  # Black
+                    
+                # Add a bit of space before paragraphs
+                p.space_before = Pt(8)
 
     # ---------------------------------------------------------------------------
     # Write the PPTX to disk
@@ -291,13 +413,13 @@ def main() -> None:
     print()
 
     # 1. Configure the API
-    configure_api(API_KEY)
+    client = configure_api(API_KEY)
 
     # 2. Read the source text
     text = read_input_text(INPUT_FILE)
 
     # 3. Generate slides via Gemini
-    raw_response = generate_slides(text)
+    raw_response = generate_slides(text, client, MAX_SLIDES)
 
     # 4. Parse the JSON response
     slides = parse_slides(raw_response)
