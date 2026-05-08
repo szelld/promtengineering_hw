@@ -47,7 +47,7 @@ if not API_KEY:
 INPUT_FILE = "teszt_doksi.pdf"
 
 # Set to "light", "dark", or "none"
-THEME = "light"
+THEME = "none"
 
 OUTPUT_FILE = f"teszt_doksi_{THEME}_pptx.pptx"
 
