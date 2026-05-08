@@ -137,7 +137,9 @@ def generate_slides(text: str, client, max_slides: int | None = None) -> str:
         "You are a presentation designer. "
         "Read the following text carefully and extract the key points. "
         "Organize them into presentation slides. "
-        "Each slide should have a short title line followed by 2-4 bullet points. "
+        "Each slide MUST have a short title line followed by 2-4 bullet points starting with '- '. "
+        "IMPORTANT: Do NOT create slides that only have a title and no bullet points. "
+        "Every single slide must contain at least 2 bullet points of meaningful content. "
         "Use the SAME language as the input text. "
     )
 
@@ -245,6 +247,21 @@ def parse_slides(response_text: str) -> list[str]:
 
     # Coerce non-string items to strings (defensive)
     slides = [str(slide) for slide in slides]
+
+    # Filter out slides that have a title but no bullet point content (empty slides)
+    valid_slides = []
+    skipped = 0
+    for slide in slides:
+        lines = [l.strip() for l in slide.strip().split('\n') if l.strip()]
+        # A valid slide must have at least one line starting with '-' or '*' (a bullet point)
+        has_bullets = any(l.startswith('- ') or l.startswith('* ') for l in lines)
+        if has_bullets:
+            valid_slides.append(slide)
+        else:
+            skipped += 1
+    if skipped > 0:
+        print(f"[!] Filtered out {skipped} title-only slide(s) with no content.")
+    slides = valid_slides
 
     if len(slides) == 0:
         print("ERROR: Gemini returned an empty slide list.")
