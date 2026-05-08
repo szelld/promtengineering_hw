@@ -26,6 +26,7 @@ from pptx.util import Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.oxml.xmlchemy import OxmlElement
+from pptx.oxml.ns import qn
 from pypdf import PdfReader
 
 # ---------------------------------------------------------------------------
@@ -307,10 +308,12 @@ def create_pptx(slides: list[str], output_path: str) -> None:
             )
             accent_line.line.fill.background()  # Remove border
             
-            # Manipulate XML to add gradient
+            # Explicitly set noFill so we know exactly where to insert gradFill in the XML sequence
+            accent_line.fill.background()
+            
+            # Manipulate XML to add gradient in the correct sequence (before <a:ln>)
             spPr = accent_line._element.spPr
-            if spPr.solidFill is not None:
-                spPr.remove(spPr.solidFill)
+            noFill = spPr.find(qn('a:noFill'))
                 
             gradFill = OxmlElement('a:gradFill')
             gsLst = OxmlElement('a:gsLst')
@@ -339,7 +342,12 @@ def create_pptx(slides: list[str], output_path: str) -> None:
             lin.set('scaled', '1')
             gradFill.append(lin)
             
-            spPr.append(gradFill)
+            # Insert gradFill right where noFill was, ensuring valid XML sequence
+            if noFill is not None:
+                noFill.addprevious(gradFill)
+                spPr.remove(noFill)
+            else:
+                spPr.insert(1, gradFill)
 
         # --- Add Body Box ---
         if body_text:
