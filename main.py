@@ -22,6 +22,8 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 from pptx import Presentation
 from pptx.util import Pt
+from pptx.dml.color import RGBColor
+from pptx.enum.shapes import MSO_SHAPE
 from pypdf import PdfReader
 
 # ---------------------------------------------------------------------------
@@ -236,20 +238,38 @@ def create_pptx(slides: list[str], output_path: str) -> None:
         blank_slide_layout = prs.slide_layouts[6] 
         slide = prs.slides.add_slide(blank_slide_layout)
         
+        # --- Apply Dark Theme Background ---
+        background = slide.background
+        fill = background.fill
+        fill.solid()
+        fill.fore_color.rgb = RGBColor(18, 18, 25)  # Very dark blue/grey
+        
         # Split content into title and body (assuming first line is title)
         lines = slide_content.strip().split("\n")
         title_text = lines[0] if lines else ""
         body_text = "\n".join(lines[1:]) if len(lines) > 1 else ""
 
-        # Add Title Box
+        # --- Add Title Box ---
         title_box = slide.shapes.add_textbox(Pt(30), Pt(30), prs.slide_width - Pt(60), Pt(50))
         tf = title_box.text_frame
         p = tf.paragraphs[0]
         p.text = title_text
+        p.font.name = "Segoe UI"
         p.font.size = Pt(32)
         p.font.bold = True
+        p.font.color.rgb = RGBColor(0, 255, 204)  # Neon Cyan
+        
+        # --- Add Accent Line ---
+        accent_line = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE, 
+            Pt(32), Pt(85), 
+            prs.slide_width - Pt(64), Pt(3)
+        )
+        accent_line.fill.solid()
+        accent_line.fill.fore_color.rgb = RGBColor(138, 43, 226)  # Electric Purple
+        accent_line.line.fill.background()  # Remove border
 
-        # Add Body Box
+        # --- Add Body Box ---
         if body_text:
             body_box = slide.shapes.add_textbox(Pt(30), Pt(100), prs.slide_width - Pt(60), prs.slide_height - Pt(130))
             tf_body = body_box.text_frame
@@ -263,6 +283,13 @@ def create_pptx(slides: list[str], output_path: str) -> None:
                     p.level = 0
                 else:
                     p.text = line.strip()
+                
+                # Style body text
+                p.font.name = "Segoe UI"
+                p.font.size = Pt(18)
+                p.font.color.rgb = RGBColor(230, 230, 240)  # Off-white / light grey
+                # Add a bit of space before paragraphs
+                p.space_before = Pt(8)
 
     # ---------------------------------------------------------------------------
     # Write the PPTX to disk
