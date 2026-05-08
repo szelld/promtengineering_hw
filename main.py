@@ -44,12 +44,12 @@ if not API_KEY:
     sys.exit(1)
 
 # Input / output paths (relative to the script's directory)
-INPUT_FILE = "beszamolo.pdf"
+INPUT_FILE = "önlab_doukmentacio111.pdf"
 
 # Set to "light", "dark", or "none"
 THEME = "light"
 
-OUTPUT_FILE = f"beszamolo_{THEME}_pptx.pptx"
+OUTPUT_FILE = f"önlab_doukmentacio_{THEME}_pptx.pptx"
 
 # Gemini model to use
 MODEL_NAME = "gemini-2.5-flash"

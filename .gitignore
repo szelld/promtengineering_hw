@@ -1,4 +1,6 @@
 .env
 __pycache__/
-.pdf
-.pptx
+*.pdf
+*.pptx
+!önlab_doukmentacio*.pdf
+!önlab_doukmentacio*.pptx
