@@ -44,12 +44,12 @@ if not API_KEY:
     sys.exit(1)
 
 # Input / output paths (relative to the script's directory)
-INPUT_FILE = "önlab_doukmentacio111.pdf"
+INPUT_FILE = "teszt_doksi.pdf"
 
 # Set to "light", "dark", or "none"
 THEME = "light"
 
-OUTPUT_FILE = f"önlab_doukmentacio_{THEME}_pptx.pptx"
+OUTPUT_FILE = f"teszt_doksi_{THEME}_pptx.pptx"
 
 # Gemini model to use
 MODEL_NAME = "gemini-2.5-flash"
@@ -214,11 +214,29 @@ def parse_slides(response_text: str) -> list[str]:
     try:
         slides = json.loads(cleaned)
     except json.JSONDecodeError as e:
-        print(f"ERROR: Failed to parse Gemini response as JSON: {e}")
-        print("--- Raw response ---")
-        print(response_text[:500])
-        print("--- End of raw response ---")
-        sys.exit(1)
+        # Gemini sometimes truncates its response mid-string when it hits the token limit.
+        # Try to recover by keeping only the fully complete slide entries.
+        print(f"[!] Warning: Gemini response was truncated. Attempting to recover complete slides...")
+        try:
+            # Split on the top-level array item separator: `,\n  "` is the standard indent
+            # More reliably: scan character by character to find complete top-level string entries
+            import re
+            # Find all complete slide strings: items that start and end with " at depth 1
+            # Pattern: matches a full JSON string value in the array (non-greedy, no unescaped newlines breaking it)
+            pattern = re.compile(r'"((?:[^"\\]|\\.)*)"\s*(?:,|\])', re.DOTALL)
+            matches = pattern.findall(cleaned)
+            if matches:
+                # Rebuild as a valid JSON array from the matched strings
+                slides = [m.replace('\\n', '\n').replace('\\"', '"').replace('\\\\', '\\') for m in matches]
+                print(f"[OK] Recovery successful — kept {len(slides)} complete slide(s) out of a truncated response.")
+            else:
+                raise ValueError("No complete slide strings found in the truncated response.")
+        except Exception as recovery_err:
+            print(f"ERROR: Recovery also failed: {recovery_err}")
+            print("--- Raw response (first 500 chars) ---")
+            print(response_text[:500])
+            print("--- End of raw response ---")
+            sys.exit(1)
 
     # Validate structure: must be a list of strings
     if not isinstance(slides, list):
